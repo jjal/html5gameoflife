@@ -1,0 +1,290 @@
+	<html>
+	<head>
+	<style>
+	#small {
+border: 1px solid #9C9898;
+	}
+	</style>
+	<script src="b64.js"></script>
+	<script src="LZWEncoder.js"></script>
+	<script src="NeuQuant.js"></script>
+	<script src="GIFEncoder.js"></script>
+	<script>
+	window.requestAnimFrame = (function(callback) {
+		return window.requestAnimationFrame || 
+		window.webkitRequestAnimationFrame || 
+		window.mozRequestAnimationFrame || 
+		window.oRequestAnimationFrame || 
+		window.msRequestAnimationFrame ||
+		function(callback) {
+			window.setTimeout(callback, 1000);
+		};
+	})();
+
+	function animate() {
+		var canvas = document.getElementById("small");
+		var context = canvas.getContext("2d");
+
+		if(window.bAnimating)
+		{
+			// update stage
+			game.evolve();
+		}
+		// render stage
+		game.draw(context);
+		// request new frame
+		window.setTimeout(animate,100);
+		//requestAnimFrame(function() {
+		//	animate();
+		//});
+	}
+	
+	//main simulation loop!
+	//	for(var i = 0; i<100; i++){
+
+	//encoder.addFrame(context);
+	//}
+
+	var encoder = new GIFEncoder();
+	encoder.setRepeat(0); //auto-loop
+	encoder.setDelay(1000);
+	encoder.setSize(160,160);
+
+	console.log(encoder.start());
+	var game = new Game();
+	
+	window.onload = function() {
+		var canvas = document.getElementById('small');
+		var context = canvas.getContext('2d');
+
+		canvas.width = 160;
+		canvas.height = 160;
+		
+		context.fillStyle = "rgb(255,255,255)";  
+		context.fillRect(0,0,canvas.width, canvas.height); //GIF can't do transparent so do white
+
+		game = new Game();
+		
+		//glider
+		game.getCell(1,3).setColorCode("B");
+		game.getCell(2,3).setColorCode("B");
+		game.getCell(3,3).setColorCode("B");
+		game.getCell(3,2).setColorCode("B");
+		game.getCell(2,1).setColorCode("B");
+
+		if ( document.addEventListener ) {
+			document.addEventListener("click", onClick, false);
+		} else if ( document.attachEvent ) {
+			document.attachEvent("onclick", onClick);
+		} else {
+			alert("Your browser will not work for this example.");
+		}
+		
+		animate();
+		//encoder.finish();
+
+		//apply the stuff
+		//document.getElementById('image').src = 'data:image/gif;base64,'+encode64(encoder.stream().getData())
+
+	};
+	
+	function drawBox(ctx, x, y, color)
+	{
+		ctx.fillStyle = "#"+color.r.toString(16)+color.g.toString(16)+color.b.toString(16);
+		ctx.fillRect(x,y,10,10);
+	}
+
+	function setPixelColor(img, x, y, color)
+	{
+		var idx = (x+y*16)*4
+		img.data[idx+0] = color.r;
+		img.data[idx+1] = color.g;
+		img.data[idx+2] = color.b;
+		img.data[idx+3] = color.a;
+	}
+
+	function Game() {
+		this.cells = new Array(16*16);
+		this.swap = new Array(this.cells.length);
+		
+		for(i=0;i<this.cells.length;i++)
+		{
+			this.cells[i] = new Cell();
+			this.swap[i] = new Cell();
+		}
+		
+		this.swapCells = function() {
+			for(i=0;i<this.cells.length;i++)
+			{
+				this.cells[i].setColorCode(this.swap[i].getColorCode());
+			}
+		}
+		
+		this.getCell = function(x,y) {
+			return this.cells[x+y*16];
+		};
+		
+		this.getSwapCell = function(x,y) {
+			return this.swap[x+y*16];
+		};
+		
+		this.draw = function(ctx) {
+			//var img = ctx.createImageData(16,16);
+			for(i=0;i<16;i++)
+			{
+				for(j = 0;j <16; j++)
+				{
+					var cell = this.getCell(i,j);
+					drawBox(ctx,i*10,j*10,cell.getColor());
+					//setPixelColor(img,i,j,cell.getColor());
+				}
+			}
+			//ctx.putImageData(img,0,0);
+		}
+		
+		this.getNeighbours = function(x,y)
+		{
+			x0 = x-1 < 0 ? 15 : x-1;
+			x1 = x+1 > 15 ? 0 : x+1;
+			y0 = y-1 < 0 ? 15 : y-1;
+			y1 = y+1 > 15 ? 0 : y+1;
+			return  [
+			this.getCell(x0,y0),
+			this.getCell(x,y0),
+			this.getCell(x1,y0),			
+			this.getCell(x0,y),
+			this.getCell(x1,y),
+			this.getCell(x0,y1),
+			this.getCell(x,y1),
+			this.getCell(x1,y1)
+			];
+		}
+		
+		this.evolve = function () {
+			for(i=0;i<16;i++)
+			{
+				for(j = 0;j <16; j++)
+				{
+					var c = this.getCell(i,j);
+					var ns = this.getNeighbours(i,j);
+					var n = 0;
+					for(k=0;k<ns.length;k++)
+					if(ns[k].getColorCode() == "B")
+					n++;
+					//it's dead
+					if(c.getColorCode() == "W")
+					{
+						if(n == 3)
+						this.getSwapCell(i,j).setColorCode("B");
+					} else 
+					//it's alive!
+					if(c.getColorCode() == "B")
+					{
+						//underpopulation
+						if(n < 2)
+						this.getSwapCell(i,j).setColorCode("W");
+						else
+						//overcrowding
+						if(n > 3)
+						this.getSwapCell(i,j).setColorCode("W");
+						else
+						this.getSwapCell(i,j).setColorCode(c.getColorCode());
+					}
+				}
+			}
+			this.swapCells();
+		}
+		this.toggleCell = function(x,y)
+		{
+			var i =(x-x%10)/10;
+			var j = (y-y%10)/10;
+			this.getCell(i,j).setColorCode(this.getCell(i,j).getColorCode() == "B"?"W":"B");
+		}
+	};
+
+	function Color(r,g,b,a)
+	{
+		this.r = r;
+		this.g = g;
+		this.b = b;
+		this.a = a;
+	}
+
+	function Cell() {
+		this.color = new Color(255,255,255,255);
+		
+		this.getColor = function()
+		{
+			return this.color;
+		};
+		
+		this.getColorCode = function()
+		{
+			if(this.color.r == 255 && this.color.g == 255 && this.color.b == 255)
+			return "W";
+			if(this.color.r == 255 && this.color.g == 255)
+			return "Y";
+			if(this.color.r == 255 && this.color.b == 255)
+			return "M";
+			if(this.color.g == 255 && this.color.b == 255)
+			return "C";
+			else
+			return "B";
+		}
+		
+		this.setColorCode = function (code)
+		{
+			switch(code)
+			{
+			case "W":
+				this.color.r = this.color.g = this.color.b = 255;
+				break;
+			case "Y":
+				this.color.r = this.color.g = 255;
+				this.color.b = 0;
+				break;
+			case "M":
+				this.color.r = this.color.b = 255;
+				this.color.g = 0;
+				break;
+			case "C":
+				this.color.g = this.color.b = 255;
+				this.color.r = 0;
+				break;
+			case "B":
+				this.color.r = this.color.g = this.color.b = 0;
+				break;
+			}
+		}
+		
+		
+		
+		this.setColorCode("W");
+	}
+
+	function onClick(e) {
+		
+		var position = getRelativePosition(e);
+		game.toggleCell(position.x,position.y);
+	}
+
+	function getRelativePosition(e) {
+		var t = document.getElementById("small");
+		var x = e.clientX+(window.pageXOffset||0);
+		var y = e.clientY+(window.pageYOffset||0);
+		do
+			x-=t.offsetLeft+parseInt(t.style.borderLeftWidth||0),
+			y-=t.offsetTop+parseInt(t.style.borderTopWidth||0);
+		while (t=t.offsetParent);
+		return {x:x,y:y};
+	}
+	</script>
+	</head>
+	<body>
+	<canvas id="small"></canvas>
+	<canvas id="big"></canvas>
+	<img id="image">
+	<br/>
+	<input type="button" value="animate" onclick="window.bAnimating=true;"/> <input type="button" value="stop" onclick="window.bAnimating=false;"/>
+	</body>
+	</html>
