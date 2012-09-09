@@ -263,6 +263,8 @@ border: 1px solid #9C9898;
 					{
 						if(n == 3)
 						this.getSwapCell(i,j).setColorCode("B");
+						else
+						this.getSwapCell(i,j).setColorCode(c.getColorCode());
 					} else 
 					//it's alive!
 					if(c.getColorCode() == "B")
